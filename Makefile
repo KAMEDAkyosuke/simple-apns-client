@@ -1,5 +1,5 @@
 gCC         = clang
-CFLAGS    += -arch i386 --std=c99 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Wno-deprecated-declarations -pedantic
+CFLAGS    += --std=c99 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Wno-deprecated-declarations -pedantic
 LDFLAGS   +=
 LDLIBS    += -lssl -lcrypto
 OBJS       = simple-apns-client.o simple-tcp-server.o socketlist.o
