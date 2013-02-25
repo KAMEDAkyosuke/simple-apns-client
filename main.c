@@ -5,6 +5,7 @@
 #include <sys/select.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <arpa/inet.h>
 
 #include <getopt.h>
 
