@@ -1,0 +1,3 @@
+[submodule "external/c_unility"]
+	path = external/c_unility
+	url = git@github.com:KAMEDAkyosuke/c_utility.git
