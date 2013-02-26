@@ -49,10 +49,7 @@ int main(int argc, char** argv)
     apns_ctx->certificate_chain_file_path = certificate_chain_file_path;
     apns_ctx->private_key_file_path = private_key_file_path;
 
-    if(apns_client_connect(apns_ctx) != APNS_CLIENT_RETURN_OK){
-        fprintf(stderr, "ERROR : %s\n", apns_ctx->error_message);
-        exit(EXIT_FAILURE);
-    }
+    apns_client_connect(apns_ctx);
 
     tcp_server_ctx_t* tcp_ctx = tcp_server_new();
     tcp_ctx->port = tcp_server_port;

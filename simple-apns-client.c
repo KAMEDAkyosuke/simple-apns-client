@@ -8,9 +8,101 @@
 
 #include <openssl/err.h>
 
-static void set_error(apns_client_ctx_t* ctx, const char* message);
-static APNS_CLIENT_RETURN get_tcp_socket(apns_client_ctx_t* ctx);
-static APNS_CLIENT_RETURN set_nonblocking(apns_client_ctx_t* ctx);
+#ifdef __APPLE__
+
+#define SSL_CTX_free(ctx) \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_CTX_free((ctx)) \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_shutdown(ctx) \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_shutdown((ctx)) \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_free(ctx) \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_shutdown((ctx)) \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_load_error_strings() \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_load_error_strings() \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_load_error_strings() \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_load_error_strings() \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_library_init() \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_library_init() \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_CTX_new(method) \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_CTX_new((method))                                             \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_CTX_use_certificate_chain_file(ctx, path) \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_CTX_use_certificate_chain_file((ctx), (path))                \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_CTX_use_PrivateKey_file(ctx, path, filetype) \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_CTX_use_PrivateKey_file((ctx), (path), (filetype))     \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_new(ctx)                    \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_new((ctx))                                             \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_set_fd(ctx, fd)             \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_set_fd((ctx), (fd))                                           \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_connect(ssl)             \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_connect((ssl))                                                \
+    _Pragma("clang diagnostic pop")
+
+#define ERR_print_errors_fp(fd)             \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    ERR_print_errors_fp((fd))                                                \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_get_error(ssl, r)        \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_get_error((ssl), (r))                                         \
+    _Pragma("clang diagnostic pop")
+
+#define SSL_write(ssl, buf, len)        \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"") \
+    SSL_write((ssl), (buf), (len))                                    \
+    _Pragma("clang diagnostic pop")
+
+#endif
+
+static void get_tcp_socket(apns_client_ctx_t* ctx);
 
 apns_client_ctx_t* apns_client_new()
 {
@@ -24,8 +116,6 @@ apns_client_ctx_t* apns_client_new()
 
     ctx->ssl_ctx = NULL;
     ctx->ssl = NULL;
-
-    ctx->error_message = NULL;
     return ctx;
 }
 
@@ -41,20 +131,12 @@ void apns_client_free(const apns_client_ctx_t *ctx)
     if(ctx->socket != 0){
         close(ctx->socket);
     }
-
-    if(ctx->error_message != NULL){
-        free(ctx->error_message);
-    }
-    free(ctx);
+    free((void*) ctx);
 }
 
-APNS_CLIENT_RETURN apns_client_connect(apns_client_ctx_t* ctx)
+void apns_client_connect(apns_client_ctx_t* ctx)
 {
-    APNS_CLIENT_RETURN ret;
-    ret = get_tcp_socket(ctx);
-    if(ret != APNS_CLIENT_RETURN_OK){
-        return ret;
-    }
+    get_tcp_socket(ctx);
 
     struct hostent *host;
     struct sockaddr_in addr;
@@ -81,10 +163,8 @@ APNS_CLIENT_RETURN apns_client_connect(apns_client_ctx_t* ctx)
                 tv.tv_sec = 1;
                 tv.tv_usec = 0;
                 if(select(0, NULL, NULL, NULL, &tv) == -1){
-                    int err = errno;
-                    set_error(ctx, strerror(err));
                     perror("select error");
-                    return APNS_CLIENT_RETURN_ERROR;
+                    exit(EXIT_FAILURE);
                 }
                 puts("re connect");
                 goto reconnect;
@@ -92,10 +172,8 @@ APNS_CLIENT_RETURN apns_client_connect(apns_client_ctx_t* ctx)
             }
         default:
             {
-                int err = errno;
-                set_error(ctx, strerror(err));
                 perror("connect error");
-                return APNS_CLIENT_RETURN_ERROR;
+                exit(EXIT_FAILURE);
             }
         }
     }
@@ -107,25 +185,25 @@ APNS_CLIENT_RETURN apns_client_connect(apns_client_ctx_t* ctx)
     ctx->ssl_ctx = SSL_CTX_new(SSLv3_client_method());
     if(ctx->ssl_ctx == NULL){
         fprintf(stderr, "ERROR : SSL_CTX_new\n");
-        return APNS_CLIENT_RETURN_ERROR;
+        exit(EXIT_FAILURE);
     }
-    if(SSL_CTX_use_certificate_chain_file(ctx->ssl_ctx, ctx->certificate_chain_file_path) != 1){
+    if((SSL_CTX_use_certificate_chain_file(ctx->ssl_ctx, ctx->certificate_chain_file_path)) != 1){
         fprintf(stderr, "ERROR : SSL_CTX_use_certificate_chain_file\n");
-        return APNS_CLIENT_RETURN_ERROR;
+        exit(EXIT_FAILURE);
     }
     if(SSL_CTX_use_PrivateKey_file(ctx->ssl_ctx, ctx->private_key_file_path, SSL_FILETYPE_PEM) != 1){
         fprintf(stderr, "ERROR : SSL_CTX_use_PrivateKey_file\n");
-        return APNS_CLIENT_RETURN_ERROR;
+        exit(EXIT_FAILURE);
     }
     ctx->ssl = SSL_new(ctx->ssl_ctx);
     if(ctx->ssl == NULL){
         fprintf(stderr, "ERROR : SSL_new\n");
-        return APNS_CLIENT_RETURN_ERROR;
+        exit(EXIT_FAILURE);
     }
     
     if(SSL_set_fd(ctx->ssl, ctx->socket) != 1){
         fprintf(stderr, "ERROR : SSL_set_fd\n");
-        return APNS_CLIENT_RETURN_ERROR;
+        exit(EXIT_FAILURE);
     }
 
     int r;
@@ -143,10 +221,8 @@ APNS_CLIENT_RETURN apns_client_connect(apns_client_ctx_t* ctx)
                 tv.tv_sec = 1;
                 tv.tv_usec = 0;
                 if(select(0, NULL, NULL, NULL, &tv) == -1){
-                    int err = errno;
-                    set_error(ctx, strerror(err));
                     perror("select error");
-                    return APNS_CLIENT_RETURN_ERROR;
+                    exit(EXIT_FAILURE);
                 }
                 puts("re ssl connect");
                 goto re_ssl_connect;
@@ -154,11 +230,9 @@ APNS_CLIENT_RETURN apns_client_connect(apns_client_ctx_t* ctx)
             break;
         default:
             fprintf(stderr, "ERROR : SSL_connect\n");
-            return APNS_CLIENT_RETURN_ERROR;
+            exit(EXIT_FAILURE);
         }
     }
-    
-    return APNS_CLIENT_RETURN_OK;
 }
 
 int apns_client_write(const apns_client_ctx_t* ctx, const uint8_t* device_token, const uint8_t* payload, uint16_t payload_len)
@@ -204,43 +278,22 @@ int apns_client_write(const apns_client_ctx_t* ctx, const uint8_t* device_token,
     return len;
 }
 
-static void set_error(apns_client_ctx_t* ctx, const char* message)
-{
-    if(ctx->error_message != NULL){
-        free(ctx->error_message);
-    }
-    int len = strlen(message);
-    ctx->error_message = (char*) malloc(sizeof(len) + 1);
-    memcpy(ctx->error_message, message, len);
-    ctx->error_message[len] = '\0';
-}
-
-static APNS_CLIENT_RETURN get_tcp_socket(apns_client_ctx_t* ctx)
+static void get_tcp_socket(apns_client_ctx_t* ctx)
 {
     if((ctx->socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1){
-        int err = errno;
-        set_error(ctx, strerror(err));
         perror("socket error");
-        return APNS_CLIENT_RETURN_ERROR;
+        exit(EXIT_FAILURE);
     }
-    return set_nonblocking(ctx);
-}
 
-static APNS_CLIENT_RETURN set_nonblocking(apns_client_ctx_t* ctx)
-{
     int flags;
     flags = fcntl(ctx->socket, F_GETFL, 0);
     if (flags < 0) {
-        int err = errno;
-        set_error(ctx, strerror(err));
         perror("socket error");
-        return APNS_CLIENT_RETURN_ERROR;
+        exit(EXIT_FAILURE);
     }
     if (fcntl(ctx->socket, F_SETFL, flags | O_NONBLOCK) < 0) {
-        int err = errno;
-        set_error(ctx, strerror(err));
         perror("socket error");
-        return APNS_CLIENT_RETURN_ERROR;
+        exit(EXIT_FAILURE);
     }
-    return APNS_CLIENT_RETURN_OK;
 }
+
