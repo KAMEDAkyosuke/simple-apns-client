@@ -1,5 +1,4 @@
 #include "simple-apns-client.h"
-
 #include <stdlib.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -46,6 +45,7 @@ void apns_client_free(const apns_client_ctx_t *ctx)
     if(ctx->error_message != NULL){
         free(ctx->error_message);
     }
+    free(ctx);
 }
 
 APNS_CLIENT_RETURN apns_client_connect(apns_client_ctx_t* ctx)
